@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
-import { doc, getDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, deleteDoc, getDocs, writeBatch, arrayUnion, arrayRemove, where } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, deleteDoc, getDocs, writeBatch, arrayUnion, arrayRemove, where, documentId } from "firebase/firestore";
 import { onAuthStateChanged, signOut, deleteUser } from "firebase/auth";
 import { auth, db } from '../firebase';
 import '../App.css';
@@ -45,6 +45,46 @@ const ProjectWorkspace = () => {
     const [unreadCount, setUnreadCount] = useState(0);
     const [activeTab, setActiveTab] = useState('tasks'); // 'tasks' | 'stats' | 'history'
     const [history, setHistory] = useState([]);
+    const [onlineUsers, setOnlineUsers] = useState({});
+
+    // Monitor Online Status of Members
+    useEffect(() => {
+        if (!project) return;
+
+        // Limit to 10 for 'in' query limitation. 
+        // Ideally we batch this, but for now taking top 10 is sufficient for MVP.
+        const allMemberIds = [project.ownerId, ...(project.members || [])].filter(Boolean);
+        const memberIds = allMemberIds.slice(0, 10);
+        if (memberIds.length === 0) return;
+
+        const q = query(collection(db, "users"), where(documentId(), "in", memberIds));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const statusMap = {};
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                // Check isOnline flag. 
+                // We trust the heartbeat in App.jsx to keep this accurate.
+                // Optionally check if lastSeen is recent (< 2-3 mins)
+                const isRecent = data.lastSeen ? (new Date() - data.lastSeen.toDate() < 180000) : false; // 3 mins buffer
+
+                if (data.isOnline && isRecent) {
+                    statusMap[doc.id] = {
+                        isOnline: true,
+                        photoURL: data.photoURL
+                    };
+                } else if (data.photoURL) {
+                    // Even if offline, we want the photo
+                    statusMap[doc.id] = {
+                        isOnline: false,
+                        photoURL: data.photoURL
+                    };
+                }
+            });
+            setOnlineUsers(statusMap);
+        });
+
+        return () => unsubscribe();
+    }, [project]);
 
     useEffect(() => {
         const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -596,8 +636,47 @@ const ProjectWorkspace = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             {/* Owner */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>
-                                    {project?.ownerName?.[0] || 'O'}
+                                <div style={{ position: 'relative', width: '28px', height: '28px' }}>
+                                    {onlineUsers[project?.ownerId]?.photoURL ? (
+                                        <img
+                                            src={onlineUsers[project?.ownerId].photoURL}
+                                            alt="Owner"
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                borderRadius: '50%',
+                                                objectFit: 'cover',
+                                                display: 'block'
+                                            }}
+                                        />
+                                    ) : (
+                                        <div style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            borderRadius: '50%',
+                                            backgroundColor: 'var(--color-secondary)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '0.8rem',
+                                            color: 'white'
+                                        }}>
+                                            {project?.ownerName?.[0] || 'O'}
+                                        </div>
+                                    )}
+
+                                    {onlineUsers[project?.ownerId]?.isOnline && (
+                                        <span style={{
+                                            position: 'absolute',
+                                            bottom: '-2px',
+                                            right: '-2px',
+                                            width: '10px',
+                                            height: '10px',
+                                            background: '#10b981',
+                                            borderRadius: '50%',
+                                            border: '2px solid #0f172a'
+                                        }} title="Online"></span>
+                                    )}
                                 </div>
                                 <div style={{ fontSize: '0.9rem' }}>
                                     {project?.ownerName} <span style={{ opacity: 0.5 }}>(Owner)</span>
@@ -607,8 +686,47 @@ const ProjectWorkspace = () => {
                             {project?.memberDetails?.map((m) => (
                                 <div key={m.uid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-surface-highlight)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>
-                                            {m.name?.[0] || 'M'}
+                                        <div style={{ position: 'relative', width: '28px', height: '28px' }}>
+                                            {onlineUsers[m.uid]?.photoURL ? (
+                                                <img
+                                                    src={onlineUsers[m.uid].photoURL}
+                                                    alt={m.name}
+                                                    style={{
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        borderRadius: '50%',
+                                                        objectFit: 'cover',
+                                                        display: 'block'
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div style={{
+                                                    width: '100%',
+                                                    height: '100%',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: 'var(--color-surface-highlight)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    fontSize: '0.8rem',
+                                                    color: 'white'
+                                                }}>
+                                                    {m.name?.[0] || 'M'}
+                                                </div>
+                                            )}
+
+                                            {onlineUsers[m.uid]?.isOnline && (
+                                                <span style={{
+                                                    position: 'absolute',
+                                                    bottom: '-2px',
+                                                    right: '-2px',
+                                                    width: '10px',
+                                                    height: '10px',
+                                                    background: '#10b981',
+                                                    borderRadius: '50%',
+                                                    border: '2px solid #0f172a'
+                                                }} title="Online"></span>
+                                            )}
                                         </div>
                                         <div style={{ fontSize: '0.9rem' }}>{m.name || m.email}</div>
                                     </div>
