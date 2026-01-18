@@ -30,7 +30,6 @@ const ProjectWorkspace = () => {
         startDate: '',
         dueDate: '',
         status: 'Pending',
-        status: 'Pending',
         percentDone: 0,
         attachments: [] // Array of { name, url, type }
     });
