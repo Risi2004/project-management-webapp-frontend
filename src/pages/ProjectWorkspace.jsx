@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, deleteDoc, getDocs, writeBatch, arrayUnion, where } from "firebase/firestore";
+import { differenceInCalendarDays, parseISO } from 'date-fns';
+import { doc, getDoc, onSnapshot, collection, addDoc, query, orderBy, updateDoc, deleteDoc, getDocs, writeBatch, arrayUnion, arrayRemove, where } from "firebase/firestore";
 import { onAuthStateChanged, signOut, deleteUser } from "firebase/auth";
 import { auth, db } from '../firebase';
 import '../App.css';
@@ -8,6 +9,8 @@ import ChatBox from '../components/ChatBox';
 import NotificationCenter from '../components/NotificationCenter';
 import ProfileMenu from '../components/ProfileMenu';
 import ProjectAnalytics from '../components/ProjectAnalytics';
+import ProjectCalendar from '../components/ProjectCalendar';
+import ThemeToggle from '../components/ThemeToggle';
 
 const ProjectWorkspace = () => {
     const { projectId } = useParams();
@@ -248,6 +251,14 @@ const ProjectWorkspace = () => {
 
     const handleAddTask = async (e) => {
         e.preventDefault();
+
+        // Check for unique Task ID
+        const isDuplicateId = tasks.some(task => task.taskId === newTask.taskId);
+        if (isDuplicateId) {
+            alert(`Task ID "${newTask.taskId}" already exists. Please choose a unique ID.`);
+            return;
+        }
+
         try {
             const uploadedAttachments = [];
 
@@ -258,10 +269,14 @@ const ProjectWorkspace = () => {
                     formData.append('file', file);
 
                     try {
-                        const uploadRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/upload-file`, {
+                        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'; // Fallback
+                        const uploadRes = await fetch(`${baseUrl}/api/upload-file`, {
                             method: 'POST',
                             body: formData
                         });
+
+                        if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.statusText}`);
+
                         const uploadData = await uploadRes.json();
                         if (uploadData.success) {
                             uploadedAttachments.push({
@@ -272,7 +287,7 @@ const ProjectWorkspace = () => {
                         }
                     } catch (error) {
                         console.error("File upload error:", error);
-                        // Continue uploading others even if one fails
+                        alert(`Failed to upload ${file.name}. Ensure your backend is running.`);
                     }
                 }
             }
@@ -401,6 +416,39 @@ const ProjectWorkspace = () => {
         }
     };
 
+    const handleRemoveMember = async (member) => {
+        if (!window.confirm(`Are you sure you want to remove ${member.name || member.email} from this project?`)) return;
+
+        try {
+            const projectRef = doc(db, "projects", projectId);
+
+            // Remove from members (UID list) and memberDetails (Object list)
+            const updatedMemberDetails = project.memberDetails.filter(m => m.uid !== member.uid);
+            const updatedMembers = project.members.filter(uid => uid !== member.uid);
+
+            await updateDoc(projectRef, {
+                members: updatedMembers,
+                memberDetails: updatedMemberDetails
+            });
+
+            await logProjectActivity("Removed Member", `Member ${member.name || member.email} was removed by ${user.displayName || user.email}.`);
+
+            // Notify Removed Member
+            await addDoc(collection(db, "users", member.uid, "notifications"), {
+                type: 'project_removal',
+                message: `You were removed from project "${project.name}" by admin.`,
+                projectId: projectId,
+                projectName: project.name,
+                read: false,
+                createdAt: new Date()
+            });
+
+        } catch (err) {
+            console.error("Error removing member:", err);
+            alert("Failed to remove member.");
+        }
+    };
+
     const handleAddMemberToProject = async (e) => {
         e.preventDefault();
         if (!newMemberEmail) return;
@@ -474,6 +522,7 @@ const ProjectWorkspace = () => {
                         <span>🔹</span> Nexus <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: '0.5rem' }}>/ {project?.name}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <ThemeToggle />
                         <NotificationCenter user={user} />
                         <button
                             className="btn-secondary"
@@ -556,11 +605,30 @@ const ProjectWorkspace = () => {
                             </div>
                             {/* Other Members */}
                             {project?.memberDetails?.map((m) => (
-                                <div key={m.uid} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-surface-highlight)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>
-                                        {m.name?.[0] || 'M'}
+                                <div key={m.uid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--color-surface-highlight)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>
+                                            {m.name?.[0] || 'M'}
+                                        </div>
+                                        <div style={{ fontSize: '0.9rem' }}>{m.name || m.email}</div>
                                     </div>
-                                    <div style={{ fontSize: '0.9rem' }}>{m.name || m.email}</div>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={() => handleRemoveMember(m)}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: '#ef4444',
+                                                cursor: 'pointer',
+                                                fontSize: '1.1rem',
+                                                padding: '0 0.25rem',
+                                                opacity: 0.7
+                                            }}
+                                            title="Remove Member"
+                                        >
+                                            &times;
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -603,6 +671,17 @@ const ProjectWorkspace = () => {
                                 📋 Tasks
                             </button>
                             <button
+                                className={`btn-secondary ${activeTab === 'my_tasks' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('my_tasks')}
+                                style={{
+                                    borderBottom: activeTab === 'my_tasks' ? '2px solid var(--color-primary)' : 'none',
+                                    borderRadius: '0',
+                                    background: 'transparent'
+                                }}
+                            >
+                                👤 My Tasks
+                            </button>
+                            <button
                                 className={`btn-secondary ${activeTab === 'stats' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('stats')}
                                 style={{
@@ -624,11 +703,26 @@ const ProjectWorkspace = () => {
                             >
                                 🕵️ History
                             </button>
+                            <button
+                                className={`btn-secondary ${activeTab === 'calendar' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('calendar')}
+                                style={{
+                                    borderBottom: activeTab === 'calendar' ? '2px solid var(--color-primary)' : 'none',
+                                    borderRadius: '0',
+                                    background: 'transparent'
+                                }}
+                            >
+                                📅 Calendar
+                            </button>
                         </div>
                         {activeTab === 'tasks' && isAdmin && <button className="btn-primary" onClick={() => setShowTaskModal(true)}>+ Add Task</button>}
                     </div>
 
-                    {activeTab === 'tasks' ? (
+                    {activeTab === 'calendar' && (
+                        <ProjectCalendar tasks={tasks} />
+                    )}
+
+                    {(activeTab === 'tasks' || activeTab === 'my_tasks') ? (
                         <div className="task-table-container" style={{ flex: 1 }}>
                             <table className="task-table">
                                 <thead>
@@ -648,195 +742,201 @@ const ProjectWorkspace = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {tasks.length === 0 ? (
+                                    {(activeTab === 'my_tasks' ? tasks.filter(t => t.assignedTo === user.uid) : tasks).length === 0 ? (
                                         <tr>
                                             <td colSpan={isAdmin ? "12" : "11"} style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
-                                                No tasks found. {isAdmin ? 'Add one above!' : ''}
+                                                No tasks found. {isAdmin && activeTab === 'tasks' ? 'Add one above!' : ''}
                                             </td>
                                         </tr>
                                     ) : (
-                                        tasks.map((task) => (
-                                            <tr key={task.id}>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <input
-                                                            value={task.taskId}
-                                                            onChange={(e) => handleUpdateTaskField(task.id, 'taskId', e.target.value)}
-                                                            onBlur={(e) => saveTaskUpdate(task.id, 'taskId', e.target.value)}
-                                                        />
-                                                    ) : task.taskId}
-                                                </td>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <textarea
-                                                            value={task.module}
-                                                            onChange={(e) => handleUpdateTaskField(task.id, 'module', e.target.value)}
-                                                            onBlur={(e) => saveTaskUpdate(task.id, 'module', e.target.value)}
-                                                            rows={2}
-                                                            style={{ resize: 'vertical', minHeight: '3rem' }}
-                                                        />
-                                                    ) : task.module}
-                                                </td>
-                                                <td>
-                                                    {task.attachments && task.attachments.length > 0 ? (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                                            {task.attachments.map((file, idx) => (
-                                                                <a key={idx} href={file.url} target="_blank" rel="noopener noreferrer"
-                                                                    style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontSize: '0.85rem' }}
-                                                                    title={file.name}>
-                                                                    {file.name || `File ${idx + 1}`}
-                                                                </a>
-                                                            ))}
-                                                        </div>
-                                                    ) : task.page && task.page.startsWith('http') ? (
-                                                        <a href={task.page} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
-                                                            View File
-                                                        </a>
-                                                    ) : (
-                                                        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-                                                            No Files
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <textarea
-                                                            value={task.description}
-                                                            onChange={(e) => handleUpdateTaskField(task.id, 'description', e.target.value)}
-                                                            onBlur={(e) => saveTaskUpdate(task.id, 'description', e.target.value)}
-                                                            rows={3}
-                                                            style={{ resize: 'both', minWidth: '150px' }}
-                                                        />
-                                                    ) : task.description}
-                                                </td>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <select
-                                                            value={task.assignedTo || ''}
-                                                            onChange={(e) => {
-                                                                handleUpdateTaskField(task.id, 'assignedTo', e.target.value);
-                                                                saveTaskUpdate(task.id, 'assignedTo', e.target.value);
-                                                            }}
-                                                        >
-                                                            <option value="" style={{ color: 'black' }}>Unassigned</option>
-                                                            <option value={project?.ownerId} style={{ color: 'black' }}>{project?.ownerName} (Owner)</option>
-                                                            {project?.memberDetails?.map(m => (
-                                                                <option key={m.uid} value={m.uid} style={{ color: 'black' }}>{m.name || m.email}</option>
-                                                            ))}
-                                                        </select>
-                                                    ) : (
-                                                        project?.memberDetails?.find(m => m.uid === task.assignedTo)?.name ||
-                                                        (task.assignedTo === project?.ownerId ? project?.ownerName : 'Unassigned')
-                                                    )}
-                                                </td>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <select
-                                                            value={task.priority}
-                                                            onChange={(e) => {
-                                                                handleUpdateTaskField(task.id, 'priority', e.target.value);
-                                                                saveTaskUpdate(task.id, 'priority', e.target.value);
-                                                            }}
-                                                            style={{
-                                                                color: task.priority === 'High' ? '#fca5a5' : task.priority === 'Medium' ? '#fcd34d' : '#6ee7b7'
-                                                            }}
-                                                        >
-                                                            <option value="Low" style={{ color: 'black' }}>Low</option>
-                                                            <option value="Medium" style={{ color: 'black' }}>Medium</option>
-                                                            <option value="High" style={{ color: 'black' }}>High</option>
-                                                        </select>
-                                                    ) : (
-                                                        <span style={{
-                                                            padding: '0.25rem 0.5rem',
-                                                            borderRadius: '4px',
-                                                            background: task.priority === 'High' ? 'rgba(239, 68, 68, 0.2)' : task.priority === 'Medium' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                                            color: task.priority === 'High' ? '#fca5a5' : task.priority === 'Medium' ? '#fcd34d' : '#6ee7b7',
-                                                            fontSize: '0.85rem'
-                                                        }}>
-                                                            {task.priority}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <input
-                                                            type="date"
-                                                            value={task.startDate}
-                                                            onChange={(e) => handleUpdateTaskField(task.id, 'startDate', e.target.value)}
-                                                            onBlur={(e) => saveTaskUpdate(task.id, 'startDate', e.target.value)}
-                                                        />
-                                                    ) : task.startDate}
-                                                </td>
-                                                <td>
-                                                    {isAdmin ? (
-                                                        <input
-                                                            type="date"
-                                                            value={task.dueDate}
-                                                            onChange={(e) => handleUpdateTaskField(task.id, 'dueDate', e.target.value)}
-                                                            onBlur={(e) => saveTaskUpdate(task.id, 'dueDate', e.target.value)}
-                                                        />
-                                                    ) : task.dueDate}
-                                                </td>
-                                                <td>
-                                                    {/* Status - Everyone can edit */}
-                                                    <select
-                                                        value={task.status}
-                                                        onChange={(e) => {
-                                                            const newVal = e.target.value;
-                                                            handleUpdateTaskField(task.id, 'status', newVal);
-                                                            saveTaskUpdate(task.id, 'status', newVal);
-                                                            if (newVal === 'Completed') {
-                                                                handleUpdateTaskField(task.id, 'percentDone', 100);
-                                                                saveTaskUpdate(task.id, 'percentDone', 100);
-                                                            } else if (newVal === 'Pending') {
-                                                                handleUpdateTaskField(task.id, 'percentDone', 0);
-                                                                saveTaskUpdate(task.id, 'percentDone', 0);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <option value="Pending" style={{ color: 'black' }}>Pending</option>
-                                                        <option value="In Progress" style={{ color: 'black' }}>In Progress</option>
-                                                        <option value="Completed" style={{ color: 'black' }}>Completed</option>
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    {/* % Done - Everyone can edit */}
-                                                    <input
-                                                        type="number"
-                                                        min="0" max="100"
-                                                        value={task.percentDone}
-                                                        onChange={(e) => handleUpdateTaskField(task.id, 'percentDone', e.target.value)}
-                                                        onBlur={(e) => saveTaskUpdate(task.id, 'percentDone', e.target.value)}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    {/* Comments - Everyone can edit */}
-                                                    <input
-                                                        value={task.comments}
-                                                        onChange={(e) => handleUpdateTaskField(task.id, 'comments', e.target.value)}
-                                                        onBlur={(e) => saveTaskUpdate(task.id, 'comments', e.target.value)}
-                                                    />
-                                                </td>
-                                                {isAdmin && (
+
+                                        (activeTab === 'my_tasks' ? tasks.filter(t => t.assignedTo === user.uid) : tasks).map((task) => {
+                                            const daysUntilDue = task.dueDate ? differenceInCalendarDays(parseISO(task.dueDate), new Date()) : null;
+                                            const isUrgent = daysUntilDue !== null && daysUntilDue <= 1;
+
+                                            return (
+                                                <tr key={task.id} style={isUrgent ? { background: 'rgba(239, 68, 68, 0.3)' } : {}}>
                                                     <td>
-                                                        <button
-                                                            onClick={() => handleDeleteTask(task.id)}
-                                                            style={{
-                                                                background: 'transparent',
-                                                                border: 'none',
-                                                                color: '#ef4444',
-                                                                cursor: 'pointer',
-                                                                fontSize: '1.2rem',
-                                                                padding: '0.25rem'
-                                                            }}
-                                                            title="Delete Task"
-                                                        >
-                                                            &times;
-                                                        </button>
+                                                        {isAdmin ? (
+                                                            <input
+                                                                value={task.taskId}
+                                                                onChange={(e) => handleUpdateTaskField(task.id, 'taskId', e.target.value)}
+                                                                onBlur={(e) => saveTaskUpdate(task.id, 'taskId', e.target.value)}
+                                                            />
+                                                        ) : task.taskId}
                                                     </td>
-                                                )}
-                                            </tr>
-                                        ))
+                                                    <td>
+                                                        {isAdmin ? (
+                                                            <textarea
+                                                                value={task.module}
+                                                                onChange={(e) => handleUpdateTaskField(task.id, 'module', e.target.value)}
+                                                                onBlur={(e) => saveTaskUpdate(task.id, 'module', e.target.value)}
+                                                                rows={2}
+                                                                style={{ resize: 'vertical', minHeight: '3rem' }}
+                                                            />
+                                                        ) : task.module}
+                                                    </td>
+                                                    <td>
+                                                        {task.attachments && task.attachments.length > 0 ? (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                                                {task.attachments.map((file, idx) => (
+                                                                    <a key={idx} href={file.url} target="_blank" rel="noopener noreferrer"
+                                                                        style={{ color: 'var(--color-primary)', textDecoration: 'underline', fontSize: '0.85rem' }}
+                                                                        title={file.name}>
+                                                                        {file.name || `File ${idx + 1}`}
+                                                                    </a>
+                                                                ))}
+                                                            </div>
+                                                        ) : task.page && task.page.startsWith('http') ? (
+                                                            <a href={task.page} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+                                                                View File
+                                                            </a>
+                                                        ) : (
+                                                            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                                                                No Files
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {isAdmin ? (
+                                                            <textarea
+                                                                value={task.description}
+                                                                onChange={(e) => handleUpdateTaskField(task.id, 'description', e.target.value)}
+                                                                onBlur={(e) => saveTaskUpdate(task.id, 'description', e.target.value)}
+                                                                rows={3}
+                                                                style={{ resize: 'both', minWidth: '150px' }}
+                                                            />
+                                                        ) : task.description}
+                                                    </td>
+                                                    <td>
+                                                        {isAdmin ? (
+                                                            <select
+                                                                value={task.assignedTo || ''}
+                                                                onChange={(e) => {
+                                                                    handleUpdateTaskField(task.id, 'assignedTo', e.target.value);
+                                                                    saveTaskUpdate(task.id, 'assignedTo', e.target.value);
+                                                                }}
+                                                            >
+                                                                <option value="" style={{ color: 'black' }}>Unassigned</option>
+                                                                <option value={project?.ownerId} style={{ color: 'black' }}>{project?.ownerName} (Owner)</option>
+                                                                {project?.memberDetails?.map(m => (
+                                                                    <option key={m.uid} value={m.uid} style={{ color: 'black' }}>{m.name || m.email}</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            project?.memberDetails?.find(m => m.uid === task.assignedTo)?.name ||
+                                                            (task.assignedTo === project?.ownerId ? project?.ownerName : 'Unassigned')
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {isAdmin ? (
+                                                            <select
+                                                                value={task.priority}
+                                                                onChange={(e) => {
+                                                                    handleUpdateTaskField(task.id, 'priority', e.target.value);
+                                                                    saveTaskUpdate(task.id, 'priority', e.target.value);
+                                                                }}
+                                                                style={{
+                                                                    color: task.priority === 'High' ? '#fca5a5' : task.priority === 'Medium' ? '#fcd34d' : '#6ee7b7'
+                                                                }}
+                                                            >
+                                                                <option value="Low" style={{ color: 'black' }}>Low</option>
+                                                                <option value="Medium" style={{ color: 'black' }}>Medium</option>
+                                                                <option value="High" style={{ color: 'black' }}>High</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span style={{
+                                                                padding: '0.25rem 0.5rem',
+                                                                borderRadius: '4px',
+                                                                background: task.priority === 'High' ? 'rgba(239, 68, 68, 0.2)' : task.priority === 'Medium' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                                                                color: task.priority === 'High' ? '#fca5a5' : task.priority === 'Medium' ? '#fcd34d' : '#6ee7b7',
+                                                                fontSize: '0.85rem'
+                                                            }}>
+                                                                {task.priority}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {isAdmin ? (
+                                                            <input
+                                                                type="date"
+                                                                value={task.startDate}
+                                                                onChange={(e) => handleUpdateTaskField(task.id, 'startDate', e.target.value)}
+                                                                onBlur={(e) => saveTaskUpdate(task.id, 'startDate', e.target.value)}
+                                                            />
+                                                        ) : task.startDate}
+                                                    </td>
+                                                    <td>
+                                                        {isAdmin ? (
+                                                            <input
+                                                                type="date"
+                                                                value={task.dueDate}
+                                                                onChange={(e) => handleUpdateTaskField(task.id, 'dueDate', e.target.value)}
+                                                                onBlur={(e) => saveTaskUpdate(task.id, 'dueDate', e.target.value)}
+                                                            />
+                                                        ) : task.dueDate}
+                                                    </td>
+                                                    <td>
+                                                        {/* Status - Everyone can edit */}
+                                                        <select
+                                                            value={task.status}
+                                                            onChange={(e) => {
+                                                                const newVal = e.target.value;
+                                                                handleUpdateTaskField(task.id, 'status', newVal);
+                                                                saveTaskUpdate(task.id, 'status', newVal);
+                                                                if (newVal === 'Completed') {
+                                                                    handleUpdateTaskField(task.id, 'percentDone', 100);
+                                                                    saveTaskUpdate(task.id, 'percentDone', 100);
+                                                                } else if (newVal === 'Pending') {
+                                                                    handleUpdateTaskField(task.id, 'percentDone', 0);
+                                                                    saveTaskUpdate(task.id, 'percentDone', 0);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <option value="Pending" style={{ color: 'black' }}>Pending</option>
+                                                            <option value="In Progress" style={{ color: 'black' }}>In Progress</option>
+                                                            <option value="Completed" style={{ color: 'black' }}>Completed</option>
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        {/* % Done - Everyone can edit */}
+                                                        <input
+                                                            type="number"
+                                                            min="0" max="100"
+                                                            value={task.percentDone}
+                                                            onChange={(e) => handleUpdateTaskField(task.id, 'percentDone', e.target.value)}
+                                                            onBlur={(e) => saveTaskUpdate(task.id, 'percentDone', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        {/* Comments - Everyone can edit */}
+                                                        <input
+                                                            value={task.comments}
+                                                            onChange={(e) => handleUpdateTaskField(task.id, 'comments', e.target.value)}
+                                                            onBlur={(e) => saveTaskUpdate(task.id, 'comments', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    {isAdmin && (
+                                                        <td>
+                                                            <button
+                                                                onClick={() => handleDeleteTask(task.id)}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    border: 'none',
+                                                                    color: '#ef4444',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '1.2rem',
+                                                                    padding: '0.25rem'
+                                                                }}
+                                                                title="Delete Task"
+                                                            >
+                                                                &times;
+                                                            </button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>

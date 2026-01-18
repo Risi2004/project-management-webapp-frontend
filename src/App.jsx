@@ -6,17 +6,21 @@ import Dashboard from './pages/Dashboard';
 import ProjectWorkspace from './pages/ProjectWorkspace';
 import './App.css';
 
+import { ThemeProvider } from './context/ThemeContext';
+
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/project/:projectId" element={<ProjectWorkspace />} />
-      </Routes>
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/project/:projectId" element={<ProjectWorkspace />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 

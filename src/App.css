@@ -20,8 +20,8 @@
   right: 0;
   z-index: 50;
   backdrop-filter: blur(12px);
-  background: rgba(3, 7, 18, 0.7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
   padding: 1rem 0;
 }
 
@@ -75,14 +75,14 @@
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--color-btn-secondary-bg);
+  color: var(--color-text-main);
   padding: 0.75rem 1.5rem;
   border-radius: 9999px;
   font-weight: 600;
   font-size: 0.95rem;
   transition: background 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-btn-secondary-border);
 }
 
 .btn-secondary:hover {
@@ -322,11 +322,11 @@
 }
 
 .form-group input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-input-border);
   padding: 0.75rem 1rem;
   border-radius: 0.75rem;
-  color: white;
+  color: var(--color-text-main);
   font-family: var(--font-body);
   transition: all 0.2s;
   outline: none;
@@ -448,9 +448,9 @@
 .task-table-container {
   width: 100%;
   overflow-x: auto;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-input-bg);
   border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-border);
 }
 
 .task-table {
@@ -464,7 +464,7 @@
 .task-table td {
   padding: 1rem;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--color-border);
   color: var(--color-text-main);
   min-width: 140px;
   /* Prevent columns from being too narrow */
@@ -481,7 +481,7 @@
 }
 
 .task-table th {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-btn-secondary-bg);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -508,6 +508,7 @@
   outline: 1px solid var(--color-primary);
   border-radius: 0.25rem;
 }
+
 /* Chat Box Styles */
 .chat-box-container {
   position: fixed;
@@ -797,8 +798,10 @@
 
 /* Modal Content Sizing */
 .modal-content {
-  max-height: 90vh; /* Don't exceed 90% of viewport height */
-  overflow-y: auto; /* Enable vertical scrolling */
+  max-height: 90vh;
+  /* Don't exceed 90% of viewport height */
+  overflow-y: auto;
+  /* Enable vertical scrolling */
   display: flex;
   flex-direction: column;
 }
@@ -863,7 +866,7 @@
 
 .dropdown-header {
   padding: 1rem;
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 0.5rem;
   margin-bottom: 0.5rem;
 }
@@ -910,11 +913,13 @@
 }
 
 .dropdown-item.logout {
-  color: #fbbf24; /* Amber for logout */
+  color: #fbbf24;
+  /* Amber for logout */
 }
 
 .dropdown-item.delete-account {
-  color: #f87171; /* Red for delete */
+  color: #f87171;
+  /* Red for delete */
 }
 
 .dropdown-item.delete-account:hover {
@@ -941,3 +946,76 @@
   background: rgba(255, 255, 255, 0.25);
 }
 
+/* Calendar Overrides */
+.calendar-container {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.rbc-calendar {
+  color: var(--color-text-main);
+  font-family: var(--font-body);
+}
+
+.rbc-header {
+  padding: 10px 0;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.rbc-month-view,
+.rbc-time-view,
+.rbc-agenda-view {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Grid Lines */
+.rbc-day-bg+.rbc-day-bg {
+  border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.rbc-month-row+.rbc-month-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.rbc-header+.rbc-header {
+  border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Off-range days */
+.rbc-off-range-bg {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Today */
+.rbc-today {
+  background: rgba(99, 102, 241, 0.1) !important;
+  /* Primary color hint */
+}
+
+/* Buttons (Toolbar) */
+.rbc-toolbar button {
+  color: white !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+  margin-right: 2px;
+}
+
+.rbc-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.rbc-toolbar button.rbc-active {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  box-shadow: none !important;
+}
+
+.rbc-toolbar-label {
+  font-size: 1.25rem;
+  font-weight: 600;
+}

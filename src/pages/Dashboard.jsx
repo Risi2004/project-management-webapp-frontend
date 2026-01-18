@@ -6,6 +6,7 @@ import { auth, db } from '../firebase';
 import '../App.css';
 import NotificationCenter from '../components/NotificationCenter';
 import ProfileMenu from '../components/ProfileMenu';
+import ThemeToggle from '../components/ThemeToggle';
 
 const Dashboard = () => {
     const [user, setUser] = useState(null);
@@ -264,6 +265,7 @@ const Dashboard = () => {
                         <span>🔹</span> Nexus
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <ThemeToggle />
                         <NotificationCenter user={user} />
                         <ProfileMenu
                             user={user}

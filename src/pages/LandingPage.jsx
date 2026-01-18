@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import heroImage from '../assets/hero_dashboard.png';
+import ThemeToggle from '../components/ThemeToggle';
 
 function LandingPage() {
     const navigate = useNavigate();
@@ -18,7 +19,8 @@ function LandingPage() {
                         <li><a href="#solutions" className="nav-link">Solutions</a></li>
                         <li><a href="#about" className="nav-link">About</a></li>
                     </ul>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <ThemeToggle />
                         <button className="btn-secondary" onClick={() => navigate('/login')}>Login</button>
                         <button className="btn-primary" onClick={() => navigate('/signup')}>Get Started</button>
                     </div>

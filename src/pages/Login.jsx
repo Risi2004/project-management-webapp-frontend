@@ -16,6 +16,9 @@ const Login = () => {
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
 
+    const [showResetModal, setShowResetModal] = useState(false);
+    const [resetEmail, setResetEmail] = useState('');
+
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -67,9 +70,16 @@ const Login = () => {
         }
     };
 
-    const handleForgotPassword = async () => {
-        if (!formData.email) {
-            setError("Please enter your email address to reset password.");
+    const handleForgotPasswordClick = () => {
+        setShowResetModal(true);
+        setMessage('');
+        setError('');
+    };
+
+    const handleResetSubmit = async (e) => {
+        e.preventDefault();
+        if (!resetEmail) {
+            setError("Please enter your email address.");
             return;
         }
 
@@ -77,8 +87,12 @@ const Login = () => {
             setLoading(true);
             setError('');
             setMessage('');
-            await sendPasswordResetEmail(auth, formData.email);
+            await sendPasswordResetEmail(auth, resetEmail);
             setMessage("Password reset email sent! Check your inbox.");
+            setTimeout(() => {
+                setShowResetModal(false);
+                setMessage('');
+            }, 3000);
         } catch (err) {
             console.error(err);
             setError(err.message.replace('Firebase: ', ''));
@@ -96,8 +110,8 @@ const Login = () => {
                 <h2>Welcome back</h2>
                 <p className="auth-subtitle">Enter your details to access your workspace.</p>
 
-                {error && <div style={{ color: '#ec4899', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
-                {message && <div style={{ color: '#10b981', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{message}</div>}
+                {error && !showResetModal && <div style={{ color: '#ec4899', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
+                {message && !showResetModal && <div style={{ color: '#10b981', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{message}</div>}
 
                 <form onSubmit={handleSubmit} className="auth-form">
                     <div className="form-group">
@@ -127,7 +141,7 @@ const Login = () => {
                     </div>
 
                     <div className="form-actions">
-                        <button type="button" onClick={handleForgotPassword} className="forgot-password" style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>
+                        <button type="button" onClick={handleForgotPasswordClick} className="forgot-password" style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>
                             Forgot password?
                         </button>
                     </div>
@@ -149,6 +163,44 @@ const Login = () => {
                     Don't have an account? <Link to="/signup">Sign up</Link>
                 </p>
             </div>
+
+            {showResetModal && (
+                <div className="modal-overlay">
+                    <div className="auth-card animate-fade-up" style={{ maxWidth: '400px' }}>
+                        <h2>Reset Password</h2>
+                        <p className="auth-subtitle">Enter your email to receive a reset link.</p>
+
+                        {error && <div style={{ color: '#ec4899', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{error}</div>}
+                        {message && <div style={{ color: '#10b981', fontSize: '0.9rem', marginBottom: '1rem', textAlign: 'center' }}>{message}</div>}
+
+                        <form onSubmit={handleResetSubmit} className="auth-form">
+                            <div className="form-group">
+                                <label htmlFor="resetEmail">Email Address</label>
+                                <input
+                                    type="email"
+                                    id="resetEmail"
+                                    value={resetEmail}
+                                    onChange={(e) => setResetEmail(e.target.value)}
+                                    placeholder="john@example.com"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
+                            <button type="submit" className="btn-primary btn-block" disabled={loading}>
+                                {loading ? 'Sending...' : 'Send Reset Link'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowResetModal(false)}
+                                className="btn-secondary btn-block"
+                                style={{ marginTop: '0.5rem' }}
+                            >
+                                Cancel
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
