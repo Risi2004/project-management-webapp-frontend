@@ -17,7 +17,7 @@ const ProjectWorkspace = () => {
     const [loading, setLoading] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
 
-    // Task State
+    // Task State (Fixed duplicate key issue)
     const [tasks, setTasks] = useState([]);
     const [showTaskModal, setShowTaskModal] = useState(false);
     const [newTask, setNewTask] = useState({
